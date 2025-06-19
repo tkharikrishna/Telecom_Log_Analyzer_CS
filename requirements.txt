@@ -1,0 +1,7 @@
+streamlit
+pandas
+scikit-learn
+numpy
+dateparser
+langchain
+huggingface_hub
