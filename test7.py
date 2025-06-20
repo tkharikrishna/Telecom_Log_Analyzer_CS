@@ -15,7 +15,7 @@ st.title("📡 AI-Powered Telecom Log Analyzer")
 uploaded_file = st.file_uploader("Upload your log file (.txt)", type=["txt"])
 logs = uploaded_file.read().decode("utf-8", errors="ignore") if uploaded_file else ""
 # === Tab Layout ===
-tabs = st.tabs(["🔍 Anomaly Detection", "💬 Ask a Question", "🕒 Time-Based Search"])
+tabs = st.tabs(["🔍 Anomaly Detection", "💬 Ask a Question"])
 # === TAB 1: Anomaly Detection ===
 with tabs[0]:
    if logs:
@@ -98,74 +98,37 @@ with tabs[0]:
            st.dataframe(top_terms_df, use_container_width=True)
        else:
            st.info("No ML-based anomalies detected.")
-# === TAB 2: Natural Question Placeholder ===
+
+# === TAB 2: Ask a Question ===
 with tabs[1]:
    if logs:
-       st.subheader("💬 Ask a Custom Question")
-       query = st.text_input("e.g. Did RP 48 fail last night?")
+       st.subheader("💬 Ask a Custom Question (Powered by Ollama LLM)")
+       query = st.text_input("Ask a question about the logs (e.g. Did RP 48 fail?)")
        if query:
-           st.warning("This part is currently disabled (RCA/GPT removed as per request).")
-# === TAB 3: Time-Based Log Search ===
-with tabs[2]:
-   if logs:
-       import streamlit as st
-import re
-from datetime import datetime
-import dateparser
-import dateparser.search
-st.subheader("🕒 Time-Based Log Search")
-query = st.text_input("Ask: e.g. Any events between 03:00 and 04:00 on May 10 2024 (24hr format)")
-# --- Block extractor around AP time ---
-def extract_blocks(log_text, window_lines=5):
-   lines = log_text.splitlines()
-   blocks = []
-   for i in range(len(lines)):
-       if 'AP time:' in lines[i]:
-           block = "\n".join(lines[i:i+window_lines])
-           blocks.append(block)
-   return blocks
-# --- Timestamp extractor from block ---
-def extract_timestamp_from_block(block):
-   match = re.search(r'AP time:\s*(\d{8}_\d{6})', block)
-   if match:
-       try:
-           return datetime.strptime(match.group(1), "%Y%m%d_%H%M%S")
-       except:
-           return None
-   return None
-if query:
-   start_time = end_time = None
-   blocks = extract_blocks(logs, window_lines=5)
-   # Extract date from user query
-   dates = dateparser.search.search_dates(query)
-   times = re.findall(r'\d{1,2}[:.]\d{2}', query)
-   if "between" in query and "and" in query and len(times) >= 2:
-       if dates:
-           full_date = dates[0][1].strftime("%Y-%m-%d")
-           start_time = dateparser.parse(f"{full_date} {times[0]}")
-           end_time = dateparser.parse(f"{full_date} {times[1]}")
-   elif dates:
-       start_time = dates[0][1]
-   matched_blocks = []
-   for block in blocks:
-       ts = extract_timestamp_from_block(block)
-       if not ts:
-           continue
-       # ⬇️ Strict year + full datetime match
-       in_time = False
-       if start_time and end_time:
-           in_time = (
-               ts.year == start_time.year and
-               start_time <= ts <= end_time
-           )
-       elif start_time:
-           in_time = ts.date() == start_time.date() and ts.year == start_time.year
-       if in_time:
-           matched_blocks.append((ts.strftime("%Y-%m-%d %H:%M:%S"), block))
-   if matched_blocks:
-       st.success(f"✅ Found {len(matched_blocks)} event(s) in specified time range:")
-       for ts, blk in matched_blocks:
-           st.markdown(f"**🕒 {ts}**")
-           st.code(blk, language="text")
-   else:
-       st.warning("No events found in the given time window.")
+           try:
+               from langchain_community.llms import Ollama
+               from langchain.prompts import PromptTemplate
+               from langchain.chains import LLMChain
+               # Load Ollama LLM (no key needed)
+               llm = Ollama(model="mistral")  # You can change to llama2, codellama, etc.
+               # Define prompt template
+               prompt = PromptTemplate(
+                   input_variables=["log_data", "query"],
+                   template="""
+You are a telecom log analysis assistant.
+LOG DATA:
+{log_data}
+USER QUESTION:
+{query}
+Based on the logs, answer clearly and concisely.
+Mention timestamps, RPs, IPs or error types if relevant.
+"""
+               )
+               # Run LangChain chain
+               chain = LLMChain(llm=llm, prompt=prompt)
+               with st.spinner("Thinking..."):
+                   response = chain.run({"log_data": logs[:3000], "query": query})  # slice to fit input
+                   st.success("Answer:")
+                   st.write(response)
+           except Exception as e:
+               st.error(f"❌ Error running LangChain with Ollama: {e}")
