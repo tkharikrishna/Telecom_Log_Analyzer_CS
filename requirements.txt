@@ -5,3 +5,5 @@ numpy
 dateparser
 langchain
 huggingface_hub
+langchain-community
+tqdm
